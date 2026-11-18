@@ -1,8 +1,6 @@
 # terraform-monitoring
 
-Projeto de estudo de **observabilidade na AWS com Terraform**: uma instância EC2 monitorada pelo
-CloudWatch, com alarmes de CPU, memória, disco e status check que notificam por e-mail via SNS,
-e um dashboard pronto.
+Monitoramento de EC2 com CloudWatch, alarmes SNS e dashboard via Terraform
 
 > Projeto para aprendizado e portfólio. Antes de usar em produção, revise custos, região e
 > requisitos de segurança do seu ambiente.
