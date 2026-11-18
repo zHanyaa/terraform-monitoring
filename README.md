@@ -1,185 +1,124 @@
-# Terraform Monitoring Infrastructure
+# terraform-monitoring
 
-Infraestrutura de monitoramento completa para AWS usando Terraform, incluindo instâncias EC2, alarmes CloudWatch e notificações SNS.
+Projeto de estudo de **observabilidade na AWS com Terraform**: uma instância EC2 monitorada pelo
+CloudWatch, com alarmes de CPU, memória, disco e status check que notificam por e-mail via SNS,
+e um dashboard pronto.
 
-## Visão Geral
-
-Este projeto demonstra como criar uma infraestrutura de monitoramento automatizada na AWS usando Terraform, incluindo:
-
-- **EC2 Instance** com perfil IAM para monitoramento
-- **CloudWatch Alarms** para monitoramento de CPU
-- **SNS Topic** para notificações por email
-- **IAM Roles e Policies** para permissões adequadas
+> Projeto para aprendizado e portfólio. Antes de usar em produção, revise custos, região e
+> requisitos de segurança do seu ambiente.
 
 ## Arquitetura
 
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   EC2 Instance  │    │  CloudWatch      │    │   SNS Topic     │
-│                 │    │  Alarm           │    │                 │
-│ • t3.micro      │◄──►│ • CPU > 80%      │───►│ • Email         │
-│ • IAM Profile   │    │ • 2 periods      │    │ • Notifications │
-│ • Monitoring    │    │ • 120s period    │    │                 │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+```mermaid
+flowchart LR
+    subgraph ec2["EC2 (Amazon Linux 2023)"]
+        agent[CloudWatch Agent<br/>memória e disco]
+    end
+    ec2 -- "AWS/EC2<br/>CPU, StatusCheck" --> cw[CloudWatch Metrics]
+    agent -- "CWAgent<br/>mem_used_percent, disk_used_percent" --> cw
+    cw --> alarms{{4 alarmes}}
+    cw --> dash[Dashboard]
+    alarms -- "ALARM / OK" --> sns[SNS Topic] --> mail([E-mail])
+    admin([Você]) -- "aws ssm start-session" --> ec2
 ```
 
-## Estrutura do Projeto
+## O que é criado
 
-```
-terraform-monitoring/
-├── main.tf                 # Configuração principal
-├── variables.tf            # Variáveis globais
-├── outputs.tf              # Outputs globais
-├── providers.tf            # Configuração de providers
-├── README.md               # Este arquivo
-└── Modules/
-    ├── ec2/
-    │   ├── main.tf         # Recursos EC2 e IAM
-    │   ├── variables.tf    # Variáveis do módulo EC2
-    │   └── outputs.tf      # Outputs do módulo EC2
-    ├── cloudwatch/
-    │   ├── main.tf         # Alarmes CloudWatch
-    │   ├── variables.tf    # Variáveis do módulo CloudWatch
-    │   └── outputs.tf      # Outputs do módulo CloudWatch
-    └── sns/
-        ├── main.tf         # Tópico e subscription SNS
-        ├── variables.tf    # Variáveis do módulo SNS
-        └── outputs.tf      # Outputs do módulo SNS
-```
+| Módulo | Recursos |
+|---|---|
+| `ec2` | Instância Amazon Linux 2023 (AMI via SSM Parameter), IMDSv2, disco criptografado, security group **sem nenhuma porta de entrada**, role com `CloudWatchAgentServerPolicy` + `AmazonSSMManagedInstanceCore`, CloudWatch Agent instalado via `user_data` |
+| `sns` | Tópico e inscrição por e-mail |
+| `cloudwatch` | 4 alarmes e um dashboard |
+
+### Alarmes
+
+| Alarme | Métrica | Dispara quando |
+|---|---|---|
+| `<prefixo>-cpu-high` | `AWS/EC2 CPUUtilization` | média > `cpu_threshold` (80%) por 5 min |
+| `<prefixo>-status-check-failed` | `AWS/EC2 StatusCheckFailed` | falha por 2 min, ou se a métrica parar de chegar |
+| `<prefixo>-memory-high` | `CWAgent mem_used_percent` | média > `memory_threshold` (85%) por 5 min |
+| `<prefixo>-disk-high` | `CWAgent disk_used_percent` (`/`) | máximo > `disk_threshold` (85%) |
+
+Todos notificam na entrada em ALARM **e** na volta para OK.
+
+> Memória e disco não são métricas nativas do EC2. Por isso a instância roda o CloudWatch Agent,
+> configurado em `modules/ec2/user_data.sh`.
 
 ## Pré-requisitos
 
-- [Terraform](https://www.terraform.io/downloads.html) >= 1.0
-- [AWS CLI](https://aws.amazon.com/cli/) configurado
-- Conta AWS com permissões adequadas
-- Email válido para receber notificações
+- [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
+- AWS CLI configurado
+- VPC default existente na região (as contas novas já vêm com ela)
 
-## Como Usar
-
-### 1. Clone o Repositório
+## Como usar
 
 ```bash
 git clone https://github.com/zHanyaa/terraform-monitoring.git
 cd terraform-monitoring
-```
 
-### 2. Configure as Variáveis
+cp terraform.tfvars.example terraform.tfvars
+# edite notification_email
 
-Edite o arquivo `terraform.tfvars` (crie se não existir):
-
-```hcl
-# Configurações da instância EC2
-instance_type = "t3.micro"
-tags = {
-  Name        = "Monitoring-Instance"
-  Environment = "Production"
-  Project     = "Terraform-Monitoring"
-}
-
-# Email para notificações
-email = "seu-email@exemplo.com"
-
-# Região AWS
-aws_region = "us-east-1"
-```
-
-### 3. Inicialize o Terraform
-
-```bash
 terraform init
-```
-
-### 4. Planeje a Infraestrutura
-
-```bash
 terraform plan
-```
-
-### 5. Aplique a Infraestrutura
-
-```bash
 terraform apply
 ```
 
-### 6. Confirme a Aplicação
+1. **Confirme a inscrição** no e-mail "AWS Notification - Subscription Confirmation". Sem isso, nenhum alarme chega.
+2. Abra o dashboard: `terraform output dashboard_url`
+3. Após uns 5 minutos, as métricas de memória e disco aparecem no namespace `CWAgent`.
 
-Digite `yes` quando solicitado.
-
-## Monitoramento
-
-Após a aplicação, você terá:
-
-- **EC2 Instance**: Instância t3.micro com perfil de monitoramento
-- **CloudWatch Alarm**: Alarme configurado para CPU > 80%
-- **SNS Topic**: Tópico para notificações por email
-- **IAM Role**: Role com permissões CloudWatch
-
-### Verificando os Recursos
+### Testando o alarme de CPU
 
 ```bash
-# Listar recursos criados
-terraform show
-
-# Ver outputs específicos
-terraform output instance_id
-terraform output topic_arn
+$(terraform output -raw ssm_session_command)
+# dentro da instância:
+sudo dnf install -y stress-ng
+stress-ng --cpu 0 --timeout 600s
 ```
 
-## Limpeza
+Em uns 5 minutos chega o e-mail de ALARM. Quando o teste acaba, chega o de OK.
 
-Para destruir a infraestrutura:
+### Limpeza
 
 ```bash
 terraform destroy
 ```
 
-## Personalização
+## Variáveis
 
-### Modificando Alarmes
+| Nome | Padrão | Descrição |
+|---|---|---|
+| `aws_region` | `us-east-1` | Região AWS |
+| `project_name` | `monitoring` | Prefixo dos recursos |
+| `environment` | `dev` | Ambiente, usado no prefixo e nas tags |
+| `instance_type` | `t3.micro` | Tipo da instância |
+| `notification_email` | — (obrigatória) | E-mail dos alarmes |
+| `cpu_threshold` | `80` | % de CPU |
+| `memory_threshold` | `85` | % de memória |
+| `disk_threshold` | `85` | % de disco em `/` |
 
-Edite `Modules/cloudwatch/main.tf` para alterar:
+## Outputs
 
-- Threshold (atualmente 80%)
-- Período de avaliação (atualmente 120s)
-- Número de períodos (atualmente 2)
+`instance_id`, `topic_arn`, `alarm_names`, `dashboard_url`, `ssm_session_command`
 
-### Adicionando Novos Alarmes
+## CI
 
-```hcl
-resource "aws_cloudwatch_metric_alarm" "memory_utilization" {
-  alarm_name          = "HighMemoryUtilization"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 2
-  metric_name         = "MemoryUtilization"
-  namespace           = "System/Linux"
-  period              = 120
-  statistic           = "Average"
-  threshold           = 85
-  alarm_description   = "Alarme quando memória > 85%"
-  alarm_actions       = [var.sns_topic_arn]
-  dimensions = {
-    InstanceId = var.instance_id
-  }
-}
-```
+O workflow `.github/workflows/terraform.yml` roda `terraform fmt`, `validate`, `tflint` e
+`checkov` em cada PR. As exceções do checkov estão em `.checkov.yaml`, cada uma com o motivo.
 
-### Modificando Tipo de Instância
+## Custo estimado
 
-Altere a variável `instance_type` no `terraform.tfvars`:
+Com `t3.micro`, a instância custa ~US$ 8/mês fora do free tier, mais ~US$ 3,60/mês de IPv4
+público. Há ainda o detailed monitoring, 4 alarmes, 3 métricas customizadas e 1 dashboard
+(os 3 primeiros dashboards são gratuitos). Destrua quando terminar de estudar.
 
-```hcl
-instance_type = "t3.small"  # ou t3.medium, t3.large, etc.
-```
+## Próximos passos
 
-## Segurança
-
-- **IAM Roles**: Permissões mínimas necessárias
-- **Security Groups**: Configurados para acesso seguro
-- **Tags**: Recursos adequadamente marcados
-- **Encryption**: Dados criptografados em repouso
+- [ ] Coletar logs do sistema no CloudWatch Logs, com metric filter
+- [ ] Alarme composto e integração com Slack/Teams via AWS Chatbot
+- [ ] Backend remoto (S3) para o state
 
 ## Autor
 
-**zHanyaa** - [GitHub](https://github.com/zHanyaa)
-
-!!ALERTA!! - Projeto criado para fins de aprendizado e exposição de experiência prática em Terraform e AWS Cloud
+**Gustavo Pina**: [LinkedIn](https://www.linkedin.com/in/gustavopina-devops/) · [GitHub](https://github.com/zHanyaa)
