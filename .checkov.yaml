@@ -1,0 +1,5 @@
+# Checks ignorados de propósito, com o motivo. Projeto de estudo, 1 instância, custo mínimo.
+skip-check:
+  - CKV_AWS_26   # SNS sem SSE: o CloudWatch não publica em tópico com a chave gerenciada alias/aws/sns; exigiria KMS próprio.
+  - CKV_AWS_88   # EC2 com IP público: usa a VPC default; sem porta de entrada aberta, acesso só por SSM.
+  - CKV_AWS_135  # EBS optimized: t3 já é EBS-optimized por padrão.
