@@ -1,9 +1,9 @@
 output "topic_arn" {
-  description = "ARN do tópico SNS criado"
+  description = "ARN do tópico SNS criado."
   value       = aws_sns_topic.alarms.arn
 }
 
 output "topic_name" {
-  description = "Nome do tópico SNS"
+  description = "Nome do tópico SNS."
   value       = aws_sns_topic.alarms.name
-} 
+}

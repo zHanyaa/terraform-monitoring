@@ -1,5 +1,7 @@
+# Sem SSE com a chave gerenciada alias/aws/sns: o CloudWatch não consegue
+# publicar em tópicos criptografados com ela (exigiria uma chave KMS própria).
 resource "aws_sns_topic" "alarms" {
-  name = "ec2-alarms-topic"
+  name = "${var.name_prefix}-alarms"
 }
 
 resource "aws_sns_topic_subscription" "email" {
@@ -7,5 +9,3 @@ resource "aws_sns_topic_subscription" "email" {
   protocol  = "email"
   endpoint  = var.email
 }
-
-
