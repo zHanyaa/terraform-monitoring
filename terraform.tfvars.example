@@ -1,0 +1,10 @@
+# Copie para terraform.tfvars e ajuste os valores.
+aws_region         = "us-east-1"
+project_name       = "monitoring"
+environment        = "dev"
+notification_email = "seu-email@exemplo.com"
+
+# Limites dos alarmes (%)
+cpu_threshold    = 80
+memory_threshold = 85
+disk_threshold   = 85
